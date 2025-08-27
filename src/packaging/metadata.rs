@@ -485,10 +485,60 @@ impl Output {
                         size_in_bytes: Some(file_size),
                     }));
                 } else if meta.is_symlink() {
-                    // For symlinks, compute hash of the target file content if it exists and is within package, otherwise empty digest
-                    let digest = if p.is_file() {
-                        compute_file_digest::<sha2::Sha256>(p)?
+                    // For symlinks, check if the target is within the package
+                    let digest = if let Ok(link_target) = p.read_link() {
+                        // Try to resolve the symlink target and check if it's within the package
+                        let resolved_target = if link_target.is_absolute() {
+                            // For absolute symlinks, the target is the absolute path
+                            link_target.clone()
+                        } else {
+                            // For relative symlinks, resolve relative to the symlink's parent directory
+                            let Some(relative_path_parent) = relative_path.parent() else {
+                                tracing::warn!("could not get parent of symlink {:?}", &p);
+                                // If we can't get parent, treat as external symlink
+                                return Ok(Some(PathsEntry {
+                                    sha256: Some(compute_bytes_digest::<sha2::Sha256>(&[])),
+                                    relative_path,
+                                    path_type: PathType::SoftLink,
+                                    prefix_placeholder: None,
+                                    no_link: false,
+                                    size_in_bytes: Some(meta.len()),
+                                }));
+                            };
+                            temp_files
+                                .temp_dir.path()
+                                .join(relative_path_parent)
+                                .join(&link_target)
+                                .canonicalize()
+                                .unwrap_or_else(|_| {
+                                    temp_files
+                                        .temp_dir.path()
+                                        .join(relative_path_parent)
+                                        .join(&link_target)
+                                })
+                        };
+
+                        // Check if the resolved target is within the package directory
+                        let is_external_symlink = if link_target.is_absolute() {
+                            // Absolute symlinks are external unless they point within the temp directory
+                            !resolved_target.starts_with(temp_files.temp_dir.path())
+                        } else {
+                            // For relative symlinks, check if resolved path is outside the package directory
+                            !resolved_target.starts_with(temp_files.temp_dir.path())
+                        };
+
+                        if is_external_symlink {
+                            // External symlinks always get empty hash
+                            compute_bytes_digest::<sha2::Sha256>(&[])
+                        } else if p.is_file() {
+                            // Internal symlinks: compute hash of target if it exists
+                            compute_file_digest::<sha2::Sha256>(p)?
+                        } else {
+                            // Internal symlinks: empty hash if target doesn't exist (broken)
+                            compute_bytes_digest::<sha2::Sha256>(&[])
+                        }
                     } else {
+                        // If we can't read the symlink, use empty hash
                         compute_bytes_digest::<sha2::Sha256>(&[])
                     };
                     return Ok(Some(PathsEntry {
