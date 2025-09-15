@@ -125,6 +125,9 @@ impl Output {
         cache: Cache,
         cache_dir: PathBuf,
     ) -> Result<Output, miette::Error> {
+        // Ensure clean state before restoring cache to prevent contamination between variants
+        self.build_configuration.directories.clean().into_diagnostic()?;
+
         let cache_prefix_dir = cache_dir.join("prefix");
         let copied_prefix = CopyDir::new(&cache_prefix_dir, self.prefix())
             .run()
@@ -172,6 +175,9 @@ impl Output {
                 .directories
                 .cache_dir
                 .join(cache_key);
+
+            // Clean build environment directories before cache operations to ensure isolation between variants
+            self.build_configuration.directories.clean().into_diagnostic()?;
 
             // restore the cache if it exists by copying the files to the prefix
             if cache_dir.exists() {
