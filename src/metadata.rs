@@ -189,6 +189,11 @@ impl Directories {
                     remove_dir_all_force(&folder.path())?;
                 }
             }
+
+            // Recreate essential directories after cleanup to ensure clean state
+            fs::create_dir_all(&self.work_dir)?;
+            fs::create_dir_all(&self.build_prefix)?;
+            fs::create_dir_all(&self.host_prefix)?;
         }
         Ok(())
     }
