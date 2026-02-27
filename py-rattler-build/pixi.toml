@@ -21,6 +21,9 @@ extra-input-globs = ["../src", "../crates"]
 python = "*"
 maturin = "~=1.12.0"
 
+[package.build-dependencies]
+rust = "<1.93"
+
 [package.target.linux.build-dependencies]
 patchelf = "~=0.17.2"
 
